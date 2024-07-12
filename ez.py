@@ -2,6 +2,8 @@ import os
 import sys
 sys.path.append('./kaggle/input/raft-pytorch')
 
+import argparse
+
 import numpy as np
 import cv2
 import matplotlib.pyplot as plt
@@ -79,79 +81,84 @@ model.eval()
 #
 #	viz(image1, image2, flow_up)
 
-#video_file = './kaggle/input/nfl-impact-detection/train/57583_000002_Endzone.mp4'
-video_file = '/mnt/c/Users/b.hillam/Downloads/GCS_Footage.mp4'
-
-cap = cv2.VideoCapture(video_file)
-fps = cap.get(cv2.CAP_PROP_FPS)
-timestamps = []
-
-frames = []
-while True:
-	has_frame, image = cap.read()
-
-	if has_frame:
-		timestamps.append(cap.get(cv2.CAP_PROP_POS_MSEC) / 1000.0)
-		image = image[:, :, ::-1] #BGR -> RGB
-		image = cv2.resize(image, (480, 270), interpolation = cv2.INTER_LINEAR)
-#		print(f'im size: {image.shape}')
-		frames.append(image)
-	else:
-		break
-cap.release()
-frames = np.stack(frames, axis=0)
-
-print(f'frame shape: {frames.shape}')
-#plt.imshow(frames[0])
-
-rot_est = np.empty(shape=[0, 3])
-
-n_vis = len(frames)
-
-#erase file contents before append
-with open('rot_est.csv', 'w') as file:
-	pass
-
-csv = open('rot_est.csv', 'a')
-
-for i in range(n_vis):
-	image1 = torch.from_numpy(frames[i]).permute(2, 0, 1).float().to(device)
-	image2 = torch.from_numpy(frames[i+1]).permute(2, 0, 1).float().to(device)
-
-#	print(f'im1 size: {image1.shape}')
-#	print(f'im2 size: {image2.shape}')
-
-	image1 = image1[None].to(device)
-	image2 = image2[None].to(device)
+if __name__ == '__main__':
+	parser = argparse.ArgumentParser()
+	parser.add_argument('--file', type=str, required=True, help='Path to video file')
+	parser.add_argument('--max_angular_rate', type=float, default=500.0, help="Maximum angular rate to search for in deg/s")
 	
-	padder = InputPadder(image1.shape)
-	image1, image2 = padder.pad(image1, image2)
+	args = parser.parse_args()
 
-#	print(f'im1 size: {image1.shape}')
-#	print(f'im2 size: {image2.shape}')
+	#video_file = '../GCS_Footage_no_repeat_frames.mp4'
+	video_file = args.file
 
-	with torch.no_grad():
-		flow_low, flow_up = model(image1, image2, iters=20, test_mode=True)
+	cap = cv2.VideoCapture(video_file)
+	fps = cap.get(cv2.CAP_PROP_FPS)
+	print(f'frame rate: {fps}')
 
-#	viz(image1, image2, flow_up)
-	flow = np.transpose(flow_up.detach().cpu().numpy()[0,0:480,0:270,:], (1,2,0))
-#	print(f'flow shape: {flow.shape}')
+	timestamps = []
+	frames = []
+	while True:
+		has_frame, image = cap.read()
 
-	h, w, _ = flow.shape
+		if has_frame:
+			timestamps.append(cap.get(cv2.CAP_PROP_POS_MSEC) / 1000.0)
+			image = image[:, :, ::-1] #BGR -> RGB
+			image = cv2.resize(image, (480, 270), interpolation = cv2.INTER_LINEAR)
+#			print(f'im size: {image.shape}')
+			frames.append(image)
+		else:
+			break
+	cap.release()
+	frames = np.stack(frames, axis=0)
 
-	args_f = 1655 / 4
-	args_bin_size = 0.001
-	args_max_angle = 0.15 #radians per frame, 0.4 = ~680 deg/sec @ 30 FPS
-	args_spatial_step = 15
+	print(f'frame shape: {frames.shape}')
+#	plt.imshow(frames[0])
+
+	max_angle = (args.max_angular_rate / fps) * np.pi / 180
+
+	rot_est = np.empty(shape=[0, 5])
+	n_vis = len(frames)
+
+	#erase file contents before append
+	with open('rot_est.csv', 'w') as file:
+		np.savetxt(file, rot_est, delimiter=',', header='Frame,Timestamp,Yaw Rate,Pitch Rate,Roll Rate')
+
+	csv = open('rot_est.csv', 'a')
+
+	for i in range(n_vis):
+		image1 = torch.from_numpy(frames[i]).permute(2, 0, 1).float().to(device)
+		image2 = torch.from_numpy(frames[i+1]).permute(2, 0, 1).float().to(device)
+
+#		print(f'im1 size: {image1.shape}')
+#		print(f'im2 size: {image2.shape}')
+
+		image1 = image1[None].to(device)
+		image2 = image2[None].to(device)
 	
-	rotation_estimator = RobustRotationEstimator(h, w, args_f, args_bin_size, args_max_angle, args_spatial_step)
-	est = rotation_estimator.estimate(flow)
+		padder = InputPadder(image1.shape)
+		image1, image2 = padder.pad(image1, image2)
 
-	print(f'{i}, {timestamps[i]}, {est[0]}, {est[1]}, {est[2]},')
+#		print(f'im1 size: {image1.shape}')
+#		print(f'im2 size: {image2.shape}')
 
-	print(f'est shape {np.reshape(est, [1,3]).shape}')
-	print(f'rotest shape {rot_est.shape}')
-	rot_est = np.vstack([rot_est, est])
-	np.savetxt(csv, np.reshape(est, [1,3]))
+		with torch.no_grad():
+			flow_low, flow_up = model(image1, image2, iters=20, test_mode=True)
+
+#		viz(image1, image2, flow_up)
+		flow = np.transpose(flow_up.detach().cpu().numpy()[0,0:480,0:270,:], (1,2,0))
+#		print(f'flow shape: {flow.shape}')
+
+		h, w, _ = flow.shape
+
+		args_f = 1655 / 4
+		args_bin_size = 0.001
+		args_spatial_step = 15
 	
+		rotation_estimator = RobustRotationEstimator(h, w, args_f, args_bin_size, max_angle, args_spatial_step)
+		est = np.concatenate(([i, timestamps[i]], rotation_estimator.estimate(flow) * (fps * 180 / np.pi)))
+
+		print(f'{int(est[0]):d}, {est[1]:f}, {est[2]:f}, {est[3]:f}, {est[4]:f},')
+
+		rot_est = np.vstack([rot_est, est])
+		np.savetxt(csv, np.reshape(est, [1,5]), delimiter=',', fmt='%i,' + '%1.3f,' + '%1.4f,' * 3)
 

@@ -7,12 +7,12 @@ channels:
   - defaults
   - conda-forge
 dependencies:
-  - python==3.11
+  - python==3.10
   - numpy
   - scipy
   - pytorch
   - pre-commit
   - flake8
-  - opencv-python
+  - opencv-python-headless
   - matplotlib
   - tqdm
