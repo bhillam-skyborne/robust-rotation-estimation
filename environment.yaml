@@ -13,3 +13,6 @@ dependencies:
   - pytorch
   - pre-commit
   - flake8
+  - opencv-python
+  - matplotlib
+  - tqdm
