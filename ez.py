@@ -125,7 +125,7 @@ if __name__ == '__main__':
 
 	csv = open('rot_est.csv', 'a')
 
-	for i in range(n_vis):
+	for i in range(n_vis - 1):
 		image1 = torch.from_numpy(frames[i]).permute(2, 0, 1).float().to(device)
 		image2 = torch.from_numpy(frames[i+1]).permute(2, 0, 1).float().to(device)
 
