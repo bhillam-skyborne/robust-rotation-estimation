@@ -121,7 +121,7 @@ if __name__ == '__main__':
 
 	#erase file contents before append
 	with open('rot_est.csv', 'w') as file:
-		np.savetxt(file, rot_est, delimiter=',', header='Frame,Timestamp,Yaw Rate,Pitch Rate,Roll Rate')
+		np.savetxt(file, rot_est, delimiter=',', header='Frame,Timestamp,Pitch Rate,Yaw Rate,Roll Rate')
 
 	csv = open('rot_est.csv', 'a')
 
